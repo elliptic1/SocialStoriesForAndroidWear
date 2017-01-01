@@ -1,13 +1,13 @@
 *.iml
 .gradle
 /local.properties
-/.idea/workspace.xml
-/.idea/libraries
+.idea
 .DS_Store
 /build
 /captures
 .externalNativeBuild
 private_strings.xml
+google-services.json
 
 # Built application files
 *.apk
