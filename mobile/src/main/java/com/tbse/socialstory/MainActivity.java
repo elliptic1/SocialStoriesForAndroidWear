@@ -1,10 +1,12 @@
 package com.tbse.socialstory;
 
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
+import android.support.v4.app.Fragment;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
@@ -15,9 +17,8 @@ import android.widget.Toast;
 
 import com.google.android.gms.auth.api.Auth;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.auth.api.signin.GoogleSignInResult;
-import com.google.android.gms.common.SignInButton;
+import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.AuthCredential;
@@ -25,15 +26,22 @@ import com.google.firebase.auth.AuthResult;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.auth.GoogleAuthProvider;
+import com.tbse.socialstory.dummy.DummyContent;
+import com.tbse.socialstory.fragments.LoginFragment;
+import com.tbse.socialstory.fragments.StoryFragment;
 
-public class MainActivity extends AppCompatActivity {
+import hugo.weaving.DebugLog;
+
+public class MainActivity extends AppCompatActivity
+        implements StoryFragment.OnListFragmentInteractionListener,
+        LoginFragment.OnFragmentInteractionListener,
+        GoogleApiHelper.OnGoogleApiConnectedListener {
+
 
     public static final String TAG = "ss";
-    private static final int RC_SIGN_IN = 1;
     private FirebaseAuth mAuth;
     private FirebaseAuth.AuthStateListener mAuthListener;
-    private SignInButton signInButton;
-    private GoogleApiHelper googleApiHelper;
+    private Fragment loginFragment = null;
 
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
@@ -42,46 +50,37 @@ public class MainActivity extends AppCompatActivity {
         final Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        final GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestIdToken(getString(R.string.server_client_id))
-                .requestEmail()
-                .build();
-
-        googleApiHelper = new GoogleApiHelper(gso, getApplicationContext());
-
         mAuth = FirebaseAuth.getInstance();
 
         mAuthListener = new FirebaseAuth.AuthStateListener() {
             @Override
+            @DebugLog
             public void onAuthStateChanged(@NonNull FirebaseAuth firebaseAuth) {
                 FirebaseUser user = firebaseAuth.getCurrentUser();
                 if (user != null) {
                     // User is signed in
                     Log.d(TAG, "onAuthStateChanged:signed_in:" + user.getUid());
+                    navigateToStoryFragment();
                 } else {
                     // User is signed out
                     Log.d(TAG, "onAuthStateChanged:signed_out");
+                    firebaseAuth.signOut();
+                    navigateToLoginFragment();
                 }
                 // ...
             }
         };
 
-        signInButton = (SignInButton) findViewById(R.id.google_sign_in_btn);
-        signInButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                signin(view);
-            }
-        });
-
         final FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
+                Snackbar.make(view, "Share stories with friends or the public! Coming Soon...", Snackbar.LENGTH_LONG)
                         .setAction("Action", null).show();
             }
         });
+
+        navigateToLoginFragment();
     }
 
     @Override
@@ -101,18 +100,20 @@ public class MainActivity extends AppCompatActivity {
         //noinspection SimplifiableIfStatement
         if (id == R.id.action_settings) {
             return true;
+        } else if (id == R.id.action_logout) {
+            Log.d("ss", "Firebase signOut");
+            FirebaseAuth.getInstance().signOut();
         }
 
         return super.onOptionsItemSelected(item);
     }
 
     @Override
+    @DebugLog
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        Log.d(TAG, "onActivityResult");
         // Result returned from launching the Intent from GoogleSignInApi.getSignInIntent(...);
-        if (requestCode == RC_SIGN_IN) {
-            Log.d(TAG, "sign in");
+        if (requestCode == LoginFragment.RC_SIGN_IN) {
             final GoogleSignInResult result = Auth.GoogleSignInApi.getSignInResultFromIntent(data);
             handleSignInResult(result);
         }
@@ -132,36 +133,67 @@ public class MainActivity extends AppCompatActivity {
         mAuth.addAuthStateListener(mAuthListener);
     }
 
-    public void signin(final View v) {
-        final Intent signInIntent = Auth.GoogleSignInApi.getSignInIntent(googleApiHelper.getGoogleApiClient());
-        Log.d(TAG, "starting sign-in activity");
-        startActivityForResult(signInIntent, RC_SIGN_IN);
+    @Override
+    @DebugLog
+    public void onGoogleApiConnected(GoogleApiClient googleApiClient) {
+        if (googleApiClient.isConnected()) {
+            navigateToStoryFragment();
+        } else {
+            googleApiClient.disconnect();
+            navigateToLoginFragment();
+        }
     }
 
+    @DebugLog
     private void handleSignInResult(final GoogleSignInResult result) {
         if (result.isSuccess()) {
-            Log.d(TAG, "is success");
+            Log.d(TAG, " - is success");
             // Google Sign In was successful, authenticate with Firebase
             final GoogleSignInAccount account = result.getSignInAccount();
             firebaseAuthWithGoogle(account);
+            navigateToStoryFragment();
         } else {
-            Log.d(TAG, "is failure");
+            Log.d(TAG, " - is failure");
             Log.d(TAG, "msg: " + result.getStatus());
             // Google Sign In failed, update UI appropriately
             // ...
         }
     }
 
-    private void firebaseAuthWithGoogle(final GoogleSignInAccount acct) {
-        Log.d(TAG, "firebaseAuthWithGoogle:" + acct.getId());
+    @DebugLog
+    private void navigateToLoginFragment() {
+        if (loginFragment == null) {
+            loginFragment = LoginFragment.newInstance("1", "2");
 
+            getSupportFragmentManager()
+                    .beginTransaction()
+                    .addToBackStack("LoginFragment")
+                    .add(R.id.main_frame_layout, loginFragment, "LoginFragment")
+                    .commit();
+        } else {
+            getSupportFragmentManager().popBackStack();
+        }
+    }
+
+    @DebugLog
+    private void navigateToStoryFragment() {
+        Fragment storyFragment = StoryFragment.newInstance(1);
+
+        getSupportFragmentManager()
+                .beginTransaction()
+                .addToBackStack("StoryFragment")
+                .replace(R.id.main_frame_layout, storyFragment, "StoryFragment")
+                .commit();
+    }
+
+    @DebugLog
+    private void firebaseAuthWithGoogle(final GoogleSignInAccount acct) {
         final AuthCredential credential = GoogleAuthProvider.getCredential(acct.getIdToken(), null);
         mAuth.signInWithCredential(credential)
                 .addOnCompleteListener(this, new OnCompleteListener<AuthResult>() {
                     @Override
+                    @DebugLog
                     public void onComplete(@NonNull Task<AuthResult> task) {
-                        Log.d(TAG, "signInWithCredential:onComplete:" + task.isSuccessful());
-
                         // If sign in fails, display a message to the user. If sign in succeeds
                         // the auth state listener will be notified and logic to handle the
                         // signed in user can be handled in the listener.
@@ -173,5 +205,13 @@ public class MainActivity extends AppCompatActivity {
                         // ...
                     }
                 });
+    }
+
+    @Override
+    public void onListFragmentInteraction(DummyContent.DummyItem item) {
+    }
+
+    @Override
+    public void onFragmentInteraction(Uri uri) {
     }
 }

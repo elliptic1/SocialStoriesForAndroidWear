@@ -17,13 +17,20 @@ import com.google.android.gms.common.api.GoogleApiClient;
 public class GoogleApiHelper implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
 
     GoogleApiClient mGoogleApiClient;
+    OnGoogleApiConnectedListener googleAPIListener;
 
-    public GoogleApiHelper(GoogleSignInOptions options, Context context) {
+    public interface OnGoogleApiConnectedListener{
+        void onGoogleApiConnected(GoogleApiClient googleApiClient);
+    }
+
+    public GoogleApiHelper(GoogleSignInOptions options, Context context,
+                           OnGoogleApiConnectedListener googleAPIListener) {
         mGoogleApiClient = new GoogleApiClient.Builder(context)
                 .addConnectionCallbacks(this)
                 .addOnConnectionFailedListener(this)
                 .addApi(Auth.GOOGLE_SIGN_IN_API, options)
                 .build();
+        this.googleAPIListener = googleAPIListener;
         connect();
     }
 
@@ -38,7 +45,7 @@ public class GoogleApiHelper implements GoogleApiClient.ConnectionCallbacks, Goo
     }
 
     public void disconnect() {
-        if (mGoogleApiClient != null && mGoogleApiClient.isConnected()) {
+        if (mGoogleApiClient != null && isConnected()) {
             mGoogleApiClient.disconnect();
         }
     }
@@ -60,11 +67,13 @@ public class GoogleApiHelper implements GoogleApiClient.ConnectionCallbacks, Goo
 
     @Override
     public void onConnected(Bundle bundle) {
-        Log.d(MainActivity.TAG, "onConnected");
+        Log.d(MainActivity.TAG, "Google API onConnected, isConnected? "
+                + mGoogleApiClient.isConnected());
+        googleAPIListener.onGoogleApiConnected(mGoogleApiClient);
     }
 
     @Override
     public void onConnectionFailed(@NonNull ConnectionResult result) {
-        Log.d(MainActivity.TAG, "onConnectionFailed");
+        Log.d(MainActivity.TAG, "Google API onConnectionFailed");
     }
 }
